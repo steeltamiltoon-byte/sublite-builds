@@ -1,0 +1,37 @@
+name: build
+on:
+  workflow_dispatch:
+    inputs:
+      job_id:
+        description: Sublite job id
+        required: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      JOB_ID: ${{ inputs.job_id }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Prepare Android project
+        run: python3 scripts/prepare.py "$JOB_ID"
+      - name: Compile package
+        run: |
+          set -o pipefail
+          PLATFORM=$(python3 -c "import json,sys;print(json.load(open('jobs/'+sys.argv[1]+'.json')).get('platform','apk'))" "$JOB_ID")
+          cd work
+          if [ "$PLATFORM" = "aab" ]; then
+            gradle bundleDebug --no-daemon --stacktrace 2>&1 | tee ../build.log
+          else
+            gradle assembleDebug --no-daemon --stacktrace 2>&1 | tee ../build.log
+          fi
+      - name: Publish artifact
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/release.sh "$JOB_ID"
