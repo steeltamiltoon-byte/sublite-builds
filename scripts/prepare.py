@@ -42,46 +42,60 @@ with open(os.path.join(main, "res", "values", "strings.xml"), "w") as f:
     f.write('<?xml version="1.0" encoding="utf-8"?>\n<resources><string name="app_name">'
             + escape(name) + "</string></resources>\n")
 
-# launcher icon
+# launcher icon — write every density so every launcher picks it up
+DENSITIES = [("mdpi", 48), ("hdpi", 72), ("xhdpi", 96), ("xxhdpi", 144), ("xxxhdpi", 192)]
+for suffix, _px in DENSITIES:
+    os.makedirs(os.path.join(main, "res", "mipmap-" + suffix), exist_ok=True)
+
+def targets():
+    return [(os.path.join(main, "res", "mipmap-" + s, "ic_launcher.png"), px)
+            for s, px in DENSITIES]
+
 icon = job.get("icon") or ""
-target = os.path.join(main, "res", "mipmap-xxxhdpi", "ic_launcher.png")
 made = False
 if icon.startswith("data:") and "," in icon:
-    head, b64data = icon.split(",", 1)
     try:
-        raw = base64.b64decode(b64data)
-        if "png" in head:
-            open(target, "wb").write(raw)
+        raw = base64.b64decode(icon.split(",", 1)[1])
+        open("icon.src", "wb").write(raw)
+        tool = shutil.which("magick") or shutil.which("convert")
+        if tool:
+            for path, px in targets():
+                subprocess.check_call([
+                    tool, "icon.src[0]", "-background", "none",
+                    "-resize", "%dx%d^" % (px, px),
+                    "-gravity", "center", "-extent", "%dx%d" % (px, px),
+                    "PNG32:" + path,
+                ])
             made = True
+            print("icon rendered with", tool)
         else:
-            open("icon.src", "wb").write(raw)
-            for tool in ("magick", "convert"):
-                if shutil.which(tool):
-                    subprocess.check_call([tool, "icon.src[0]", "-resize", "192x192!", target])
-                    made = True
-                    break
+            print("no imagemagick available")
     except Exception as exc:
         print("icon conversion failed:", exc)
 
 if not made:
     # pure-python fallback icon: dark square with a lime rounded block
     import struct, zlib
-    size = 192
-    rows = bytearray()
-    for y in range(size):
-        rows.append(0)
-        for x in range(size):
-            inner = 28 <= x < size - 28 and 28 <= y < size - 28
-            rows += bytes((155, 225, 93) if inner else (13, 15, 13))
 
-    def chunk(tag, data):
-        return (struct.pack(">I", len(data)) + tag + data
-                + struct.pack(">I", zlib.crc32(tag + data) & 0xFFFFFFFF))
+    def solid_png(size):
+        rows = bytearray()
+        for y in range(size):
+            rows.append(0)
+            pad = max(4, size // 7)
+            for x in range(size):
+                inner = pad <= x < size - pad and pad <= y < size - pad
+                rows += bytes((155, 225, 93) if inner else (13, 15, 13))
 
-    png = (b"\x89PNG\r\n\x1a\n"
-           + chunk(b"IHDR", struct.pack(">IIBBBBB", size, size, 8, 2, 0, 0, 0))
-           + chunk(b"IDAT", zlib.compress(bytes(rows), 9))
-           + chunk(b"IEND", b""))
-    open(target, "wb").write(png)
+        def chunk(tag, data):
+            return (struct.pack(">I", len(data)) + tag + data
+                    + struct.pack(">I", zlib.crc32(tag + data) & 0xFFFFFFFF))
+
+        return (b"\x89PNG\r\n\x1a\n"
+                + chunk(b"IHDR", struct.pack(">IIBBBBB", size, size, 8, 2, 0, 0, 0))
+                + chunk(b"IDAT", zlib.compress(bytes(rows), 9))
+                + chunk(b"IEND", b""))
+
+    for path, px in targets():
+        open(path, "wb").write(solid_png(px))
 
 print("prepared", name, package_id, start_url)
