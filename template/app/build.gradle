@@ -1,0 +1,23 @@
+plugins { id 'com.android.application' }
+
+android {
+  namespace 'app.sublite.wrapper'
+  compileSdk 34
+
+  defaultConfig {
+    applicationId "__PACKAGE_ID__"
+    minSdk 23
+    targetSdk 34
+    versionCode 1
+    versionName "1.0"
+  }
+
+  buildTypes {
+    debug { minifyEnabled false }
+  }
+
+  compileOptions {
+    sourceCompatibility JavaVersion.VERSION_17
+    targetCompatibility JavaVersion.VERSION_17
+  }
+}
