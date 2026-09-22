@@ -46,19 +46,42 @@ with open(os.path.join(main, "res", "values", "strings.xml"), "w") as f:
 icon = job.get("icon") or ""
 target = os.path.join(main, "res", "mipmap-xxxhdpi", "ic_launcher.png")
 made = False
-if "," in icon and icon.startswith("data:"):
+if icon.startswith("data:") and "," in icon:
+    head, b64data = icon.split(",", 1)
     try:
-        raw = base64.b64decode(icon.split(",", 1)[1])
-        open("icon.src", "wb").write(raw)
-        subprocess.check_call(["convert", "icon.src[0]", "-resize", "192x192!", target])
-        made = True
+        raw = base64.b64decode(b64data)
+        if "png" in head:
+            open(target, "wb").write(raw)
+            made = True
+        else:
+            open("icon.src", "wb").write(raw)
+            for tool in ("magick", "convert"):
+                if shutil.which(tool):
+                    subprocess.check_call([tool, "icon.src[0]", "-resize", "192x192!", target])
+                    made = True
+                    break
     except Exception as exc:
         print("icon conversion failed:", exc)
+
 if not made:
-    letter = (name.strip()[:1] or "S").upper()
-    subprocess.check_call([
-        "convert", "-size", "192x192", "xc:#0d0f0d", "-fill", "#9BE15D",
-        "-pointsize", "120", "-gravity", "center", "-annotate", "0", letter, target,
-    ])
+    # pure-python fallback icon: dark square with a lime rounded block
+    import struct, zlib
+    size = 192
+    rows = bytearray()
+    for y in range(size):
+        rows.append(0)
+        for x in range(size):
+            inner = 28 <= x < size - 28 and 28 <= y < size - 28
+            rows += bytes((155, 225, 93) if inner else (13, 15, 13))
+
+    def chunk(tag, data):
+        return (struct.pack(">I", len(data)) + tag + data
+                + struct.pack(">I", zlib.crc32(tag + data) & 0xFFFFFFFF))
+
+    png = (b"\x89PNG\r\n\x1a\n"
+           + chunk(b"IHDR", struct.pack(">IIBBBBB", size, size, 8, 2, 0, 0, 0))
+           + chunk(b"IDAT", zlib.compress(bytes(rows), 9))
+           + chunk(b"IEND", b""))
+    open(target, "wb").write(png)
 
 print("prepared", name, package_id, start_url)
