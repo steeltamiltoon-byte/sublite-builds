@@ -59,6 +59,9 @@ public class MainActivity extends Activity {
     }
 
     web = new WebView(this);
+    web.setHapticFeedbackEnabled(false);
+    web.setLongClickable(false);
+    web.setOnLongClickListener(view -> true);
     WebSettings ws = web.getSettings();
     ws.setJavaScriptEnabled(true);
     ws.setDomStorageEnabled(true);
@@ -99,6 +102,20 @@ public class MainActivity extends Activity {
         if (isInternal(url)) return false;
         openExternally(url);
         return true;
+      }
+
+      @Override
+      public void onPageFinished(WebView view, String url) {
+        super.onPageFinished(view, url);
+        view.evaluateJavascript(
+          "(function(){var s=document.getElementById('sublite-no-select');" +
+          "if(!s){s=document.createElement('style');s.id='sublite-no-select';" +
+          "s.textContent='*{-webkit-user-select:none!important;user-select:none!important;-webkit-touch-callout:none!important}';" +
+          "(document.head||document.documentElement).appendChild(s);}" +
+          "document.addEventListener('contextmenu',function(e){e.preventDefault()},true);" +
+          "document.addEventListener('selectstart',function(e){e.preventDefault()},true)})()",
+          null
+        );
       }
     });
 
