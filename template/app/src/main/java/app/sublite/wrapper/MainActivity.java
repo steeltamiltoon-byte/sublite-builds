@@ -2,12 +2,10 @@ package app.sublite.wrapper;
 
 import android.app.Activity;
 import android.content.Intent;
-import android.graphics.Color;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Message;
 import android.view.KeyEvent;
-import android.view.Window;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
@@ -51,28 +49,9 @@ public class MainActivity extends Activity {
     }
   }
 
-  private void updateStatusBarFromPage(WebView view) {
-    view.evaluateJavascript(
-      "(function(){var m=document.querySelector('meta[name="theme-color"]');return m?m.getAttribute('content'):''})()",
-      value -> {
-        if (value == null) return;
-        String c = value.replace(""", "").trim();
-        if (c.isEmpty() || "null".equals(c)) return;
-        try {
-          int color = Color.parseColor(c);
-          getWindow().setStatusBarColor(color);
-          getWindow().setNavigationBarColor(color);
-        } catch (Exception ignored) { }
-      }
-    );
-  }
-
   @Override
   protected void onCreate(Bundle state) {
     super.onCreate(state);
-    Window window = getWindow();
-    window.setStatusBarColor(Color.BLACK);
-    window.setNavigationBarColor(Color.BLACK);
     String startUrl = "__START_URL__";
     if (startUrl.startsWith("http")) {
       String h = Uri.parse(startUrl).getHost();
@@ -137,7 +116,6 @@ public class MainActivity extends Activity {
           "document.addEventListener('selectstart',function(e){e.preventDefault()},true)})()",
           null
         );
-        updateStatusBarFromPage(view);
       }
     });
 
