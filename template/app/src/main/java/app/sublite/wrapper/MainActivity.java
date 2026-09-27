@@ -141,13 +141,11 @@ public class MainActivity extends Activity {
       public void onPageFinished(WebView view, String url) {
         super.onPageFinished(view, url);
         view.evaluateJavascript(
-          "(function(){var s=document.getElementById('sublite-no-select');" +
-          "if(!s){s=document.createElement('style');s.id='sublite-no-select';" +
-          "s.textContent='*:not(input):not(textarea):not([contenteditable=true]){-webkit-user-select:none!important;user-select:none!important;-webkit-touch-callout:none!important} input,textarea,[contenteditable=true]{-webkit-user-select:text!important;user-select:text!important;-webkit-touch-callout:default!important}';" +
-          "(document.head||document.documentElement).appendChild(s);}" +
-          "function editable(e){return e.target&&e.target.closest&&e.target.closest('input,textarea,[contenteditable=true]');}" +
-          "document.addEventListener('contextmenu',function(e){if(!editable(e))e.preventDefault()},true);" +
-          "document.addEventListener('selectstart',function(e){if(!editable(e))e.preventDefault()},true)})()",
+          "(function(){var old=document.getElementById('sublite-no-select');if(old)old.remove();" +
+          "var s=document.getElementById('sublite-select');" +
+          "if(!s){s=document.createElement('style');s.id='sublite-select';" +
+          "s.textContent='*{-webkit-user-select:text!important;user-select:text!important;-webkit-touch-callout:default!important}';" +
+          "(document.head||document.documentElement).appendChild(s);}})()",
           null
         );
         colorHandler.removeCallbacks(colorWatcher);
