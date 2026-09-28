@@ -10,7 +10,6 @@ android {
     targetSdk 34
     versionCode 1
     versionName "1.0"
-    manifestPlaceholders = [admobAppId: "__ADMOB_APP_ID__"]
   }
 
   buildTypes {
@@ -21,10 +20,4 @@ android {
     sourceCompatibility JavaVersion.VERSION_17
     targetCompatibility JavaVersion.VERSION_17
   }
-}
-
-tasks.withType(JavaCompile).configureEach { options.encoding = 'UTF-8' }
-
-dependencies {
-  implementation 'com.google.android.gms:play-services-ads:23.3.0'
 }
