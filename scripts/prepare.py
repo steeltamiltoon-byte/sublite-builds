@@ -29,34 +29,9 @@ else:
         f.write(html)
     start_url = "file:///android_asset/www/index.html"
 
-# AdMob App ID: job field, else any ca-app-pub-...~... found in the HTML / page,
-# else Google's official test App ID (the SDK requires one in the manifest).
-TEST_APP_ID = "ca-app-pub-3940256099942544~3347511713"
-APP_ID_RE = re.compile(r"ca-app-pub-[0-9]+~[0-9]+")
-
-def find_app_id():
-    m = APP_ID_RE.search(job.get("admobAppId") or "")
-    if m:
-        return m.group(0)
-    text = ""
-    if job.get("sourceType") == "url":
-        try:
-            import urllib.request
-            req = urllib.request.Request(start_url, headers={"User-Agent": "Mozilla/5.0 (Linux; Android 13)"})
-            text = urllib.request.urlopen(req, timeout=20).read(2000000).decode("utf-8", "ignore")
-        except Exception as exc:
-            print("could not fetch page for admob id:", exc)
-    else:
-        text = job.get("sourceValue") or ""
-    m = APP_ID_RE.search(text)
-    return m.group(0) if m else TEST_APP_ID
-
-admob_app_id = find_app_id()
-print("admob app id:", admob_app_id)
-
-# applicationId + start url + admob app id
+# applicationId + start url
 gradle_path = os.path.join("work", "app", "build.gradle")
-gradle = open(gradle_path).read().replace("__PACKAGE_ID__", package_id).replace("__ADMOB_APP_ID__", admob_app_id)
+gradle = open(gradle_path).read().replace("__PACKAGE_ID__", package_id)
 open(gradle_path, "w").write(gradle)
 
 activity = os.path.join(main, "java", "app", "sublite", "wrapper", "MainActivity.java")
