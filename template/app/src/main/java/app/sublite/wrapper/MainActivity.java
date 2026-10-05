@@ -25,6 +25,23 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
+import android.Manifest;
+import android.app.DownloadManager;
+import android.content.pm.ActivityInfo;
+import android.content.pm.PackageManager;
+import android.os.Environment;
+import android.view.Gravity;
+import android.view.ViewGroup;
+import android.view.WindowManager;
+import android.webkit.CookieManager;
+import android.webkit.GeolocationPermissions;
+import android.webkit.PermissionRequest;
+import android.webkit.URLUtil;
+import android.webkit.ValueCallback;
+import android.webkit.WebResourceError;
+import android.widget.ImageView;
+import android.widget.Toast;
+import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 import org.json.JSONObject;
 import com.google.android.gms.ads.AdError;
 import com.google.android.gms.ads.AdListener;
@@ -171,7 +188,7 @@ public class MainActivity extends Activity {
   }
 
   private void checkGateAndStart() {
-    if (privateDnsOn()) {
+    if (F.PRIVATE_DNS_BLOCK && privateDnsOn()) {
       showDnsBlock();
       return;
     }
@@ -345,20 +362,96 @@ public class MainActivity extends Activity {
   }
 
   // ---------- lifecycle ----------
+  private SwipeRefreshLayout swipe;
+  private View splashView;
+  private ValueCallback<Uri[]> fileCallback;
+  private PermissionRequest pendingWebPermission;
+  private GeolocationPermissions.Callback pendingGeoCallback;
+  private String pendingGeoOrigin;
+  private static final int REQ_FILE = 41;
+  private static final int REQ_MEDIA = 42;
+  private static final int REQ_GEO = 43;
+
+  private void hideSystemBars() {
+    if (!F.FULLSCREEN) return;
+    getWindow().getDecorView().setSystemUiVisibility(
+      View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY | View.SYSTEM_UI_FLAG_FULLSCREEN
+      | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+      | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN);
+  }
+
+  @Override
+  public void onWindowFocusChanged(boolean hasFocus) {
+    super.onWindowFocusChanged(hasFocus);
+    if (hasFocus) hideSystemBars();
+  }
+
+  private void removeSplash() {
+    if (splashView != null) {
+      View s = splashView;
+      splashView = null;
+      s.animate().alpha(0f).setDuration(250).withEndAction(() -> {
+        if (s.getParent() instanceof FrameLayout) ((FrameLayout) s.getParent()).removeView(s);
+      }).start();
+    }
+  }
+
+  private void showOfflinePage(WebView view, String failingUrl) {
+    String safe = failingUrl == null ? "" : failingUrl.replace("'", "%27").replace("<", "%3C");
+    String html = "<!doctype html><html><head><meta name='viewport' content='width=device-width,initial-scale=1'>"
+      + "<meta name='theme-color' content='#0d0f0d'></head>"
+      + "<body style='margin:0;background:#0d0f0d;color:#e8f5e0;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;text-align:center'>"
+      + "<div><div style='font-size:56px'>&#128246;</div><h2>Internet இல்லை</h2><p style='opacity:.7'>No internet connection</p>"
+      + "<button onclick=\"location.href='" + safe + "'\" style='margin-top:16px;padding:12px 28px;border:0;border-radius:10px;background:#9be15d;color:#0d0f0d;font-weight:bold;font-size:16px'>மீண்டும் முயற்சி / Retry</button></div></body></html>";
+    view.loadDataWithBaseURL(null, html, "text/html", "utf-8", failingUrl);
+  }
+
+  private boolean hasPerm(String p) {
+    return Build.VERSION.SDK_INT < 23 || checkSelfPermission(p) == PackageManager.PERMISSION_GRANTED;
+  }
+
+  @Override
+  public void onRequestPermissionsResult(int code, String[] perms, int[] results) {
+    super.onRequestPermissionsResult(code, perms, results);
+    boolean ok = results.length > 0;
+    for (int r : results) if (r != PackageManager.PERMISSION_GRANTED) ok = false;
+    if (code == REQ_MEDIA && pendingWebPermission != null) {
+      if (ok) pendingWebPermission.grant(pendingWebPermission.getResources()); else pendingWebPermission.deny();
+      pendingWebPermission = null;
+    } else if (code == REQ_GEO && pendingGeoCallback != null) {
+      pendingGeoCallback.invoke(pendingGeoOrigin, ok, false);
+      pendingGeoCallback = null;
+    }
+  }
+
+  @Override
+  protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+    super.onActivityResult(requestCode, resultCode, data);
+    if (requestCode == REQ_FILE && fileCallback != null) {
+      fileCallback.onReceiveValue(WebChromeClient.FileChooserParams.parseResult(resultCode, data));
+      fileCallback = null;
+    }
+  }
+
   @Override
   protected void onCreate(Bundle state) {
     super.onCreate(state);
     Window window = getWindow();
     window.setStatusBarColor(Color.BLACK);
     window.setNavigationBarColor(Color.BLACK);
+    if (F.PORTRAIT_LOCK) setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
+    if (F.KEEP_AWAKE) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+    hideSystemBars();
     if (startUrl.startsWith("http")) {
       String h = Uri.parse(startUrl).getHost();
       if (h != null) homeHost = h.toLowerCase();
     }
 
-    new Thread(() -> {
-      try { MobileAds.initialize(this, status -> { }); } catch (Exception ignored) { }
-    }).start();
+    if (F.ADMOB) {
+      new Thread(() -> {
+        try { MobileAds.initialize(this, status -> { }); } catch (Exception ignored) { }
+      }).start();
+    }
 
     LinearLayout root = new LinearLayout(this);
     root.setOrientation(LinearLayout.VERTICAL);
@@ -368,9 +461,7 @@ public class MainActivity extends Activity {
     bottomBanner.setVisibility(View.GONE);
 
     web = new WebView(this);
-    web.setHapticFeedbackEnabled(false);
-    web.setLongClickable(false);
-    web.setOnLongClickListener(v -> true);
+    if (F.NO_VIBRATION) web.setHapticFeedbackEnabled(false);
     WebSettings ws = web.getSettings();
     ws.setJavaScriptEnabled(true);
     ws.setDomStorageEnabled(true);
@@ -381,7 +472,36 @@ public class MainActivity extends Activity {
     ws.setMediaPlaybackRequiresUserGesture(false);
     ws.setJavaScriptCanOpenWindowsAutomatically(true);
     ws.setSupportMultipleWindows(true);
-    web.addJavascriptInterface(new AdBridge(), "SubliteAds");
+    ws.setGeolocationEnabled(F.LOCATION);
+    if (F.NO_ZOOM) {
+      ws.setSupportZoom(false);
+      ws.setBuiltInZoomControls(false);
+    } else {
+      ws.setSupportZoom(true);
+      ws.setBuiltInZoomControls(true);
+      ws.setDisplayZoomControls(false);
+    }
+    if (F.ADMOB) web.addJavascriptInterface(new AdBridge(), "SubliteAds");
+
+    if (F.DOWNLOADS) {
+      web.setDownloadListener((url, userAgent, contentDisposition, mimeType, length) -> {
+        try {
+          DownloadManager.Request req = new DownloadManager.Request(Uri.parse(url));
+          String fileName = URLUtil.guessFileName(url, contentDisposition, mimeType);
+          String cookies = CookieManager.getInstance().getCookie(url);
+          if (cookies != null) req.addRequestHeader("Cookie", cookies);
+          req.addRequestHeader("User-Agent", userAgent);
+          req.setMimeType(mimeType);
+          req.setTitle(fileName);
+          req.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+          req.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName);
+          ((DownloadManager) getSystemService(DOWNLOAD_SERVICE)).enqueue(req);
+          Toast.makeText(this, "Downloading " + fileName, Toast.LENGTH_SHORT).show();
+        } catch (Exception e) {
+          openExternally(url);
+        }
+      });
+    }
 
     web.setWebChromeClient(new WebChromeClient() {
       @Override
@@ -391,7 +511,9 @@ public class MainActivity extends Activity {
           @Override
           public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest request) {
             String url = request.getUrl().toString();
-            if (isInternal(url)) {
+            if (!F.EXTERNAL_LINKS && url.startsWith("http")) {
+              web.loadUrl(url);
+            } else if (isInternal(url)) {
               web.loadUrl(url);
             } else {
               openExternally(url);
@@ -403,44 +525,121 @@ public class MainActivity extends Activity {
         resultMsg.sendToTarget();
         return true;
       }
+
+      @Override
+      public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback, FileChooserParams params) {
+        if (!F.FILE_UPLOAD) return false;
+        if (fileCallback != null) fileCallback.onReceiveValue(null);
+        fileCallback = callback;
+        try {
+          startActivityForResult(params.createIntent(), REQ_FILE);
+          return true;
+        } catch (Exception e) {
+          fileCallback = null;
+          return false;
+        }
+      }
+
+      @Override
+      public void onPermissionRequest(PermissionRequest request) {
+        if (!F.CAMERA_MIC) { request.deny(); return; }
+        runOnUiThread(() -> {
+          java.util.ArrayList<String> need = new java.util.ArrayList<>();
+          for (String r : request.getResources()) {
+            if (PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(r) && !hasPerm(Manifest.permission.CAMERA)) need.add(Manifest.permission.CAMERA);
+            if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(r) && !hasPerm(Manifest.permission.RECORD_AUDIO)) need.add(Manifest.permission.RECORD_AUDIO);
+          }
+          if (need.isEmpty()) { request.grant(request.getResources()); return; }
+          pendingWebPermission = request;
+          requestPermissions(need.toArray(new String[0]), REQ_MEDIA);
+        });
+      }
+
+      @Override
+      public void onGeolocationPermissionsShowPrompt(String origin, GeolocationPermissions.Callback callback) {
+        if (!F.LOCATION) { callback.invoke(origin, false, false); return; }
+        if (hasPerm(Manifest.permission.ACCESS_FINE_LOCATION)) { callback.invoke(origin, true, false); return; }
+        pendingGeoOrigin = origin;
+        pendingGeoCallback = callback;
+        requestPermissions(new String[] { Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION }, REQ_GEO);
+      }
     });
 
     web.setWebViewClient(new WebViewClient() {
       @Override
       public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
         String url = request.getUrl().toString();
+        if (!F.EXTERNAL_LINKS && url.startsWith("http")) return false;
         if (isInternal(url)) return false;
         openExternally(url);
         return true;
       }
 
       @Override
+      public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
+        super.onReceivedError(view, request, error);
+        if (F.OFFLINE_PAGE && request.isForMainFrame()) showOfflinePage(view, request.getUrl().toString());
+      }
+
+      @Override
       public void onPageFinished(WebView view, String url) {
         super.onPageFinished(view, url);
-        view.evaluateJavascript(
-          "(function(){var old=document.getElementById('sublite-select');if(old)old.remove();" +
-          "if(!document.getElementById('sublite-no-select')){var s=document.createElement('style');s.id='sublite-no-select';" +
-          "s.textContent='*{-webkit-user-select:none!important;user-select:none!important;-webkit-touch-callout:none!important}" +
-          "input,textarea,[contenteditable],[contenteditable] *{-webkit-user-select:text!important;user-select:text!important;-webkit-touch-callout:default!important}';" +
-          "(document.head||document.documentElement).appendChild(s);" +
-          "var ed=function(t){return t&&t.closest&&t.closest('input,textarea,[contenteditable]');};" +
-          "document.addEventListener('contextmenu',function(e){if(!ed(e.target))e.preventDefault();},true);" +
-          "document.addEventListener('selectstart',function(e){if(!ed(e.target))e.preventDefault();},true);}" +
-          "var b=document.querySelector('meta[name=admob-banner-id]');" +
-          "if(b&&b.content&&window.SubliteAds){var p=document.querySelector('meta[name=admob-banner-position]');" +
-          "SubliteAds.showBannerAt(b.content,p?p.content:'bottom');}" +
-          "window.dispatchEvent(new Event('sublite-ads-ready'));})()",
-          null
-        );
-        colorHandler.removeCallbacks(colorWatcher);
-        colorHandler.post(colorWatcher);
+        if (swipe != null) swipe.setRefreshing(false);
+        removeSplash();
+        StringBuilder js = new StringBuilder("(function(){var old=document.getElementById('sublite-select');if(old)old.remove();");
+        if (F.NO_TEXT_SELECT) {
+          js.append("if(!document.getElementById('sublite-no-select')){var s=document.createElement('style');s.id='sublite-no-select';")
+            .append("s.textContent='*{-webkit-user-select:none!important;user-select:none!important;-webkit-touch-callout:none!important}")
+            .append("input,textarea,[contenteditable],[contenteditable] *{-webkit-user-select:text!important;user-select:text!important;-webkit-touch-callout:default!important}';")
+            .append("(document.head||document.documentElement).appendChild(s);")
+            .append("var ed=function(t){return t&&t.closest&&t.closest('input,textarea,[contenteditable]');};")
+            .append("document.addEventListener('contextmenu',function(e){if(!ed(e.target))e.preventDefault();},true);")
+            .append("document.addEventListener('selectstart',function(e){if(!ed(e.target))e.preventDefault();},true);}");
+        }
+        if (F.NO_ZOOM) {
+          js.append("var vp=document.querySelector('meta[name=viewport]');if(!vp){vp=document.createElement('meta');vp.name='viewport';(document.head||document.documentElement).appendChild(vp);}")
+            .append("vp.content='width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no';");
+        }
+        if (F.ADMOB) {
+          js.append("var b=document.querySelector('meta[name=admob-banner-id]');")
+            .append("if(b&&b.content&&window.SubliteAds){var p=document.querySelector('meta[name=admob-banner-position]');")
+            .append("SubliteAds.showBannerAt(b.content,p?p.content:'bottom');}")
+            .append("window.dispatchEvent(new Event('sublite-ads-ready'));");
+        }
+        js.append("})()");
+        view.evaluateJavascript(js.toString(), null);
+        if (F.STATUS_BAR_AUTO) {
+          colorHandler.removeCallbacks(colorWatcher);
+          colorHandler.post(colorWatcher);
+        }
       }
     });
 
+    swipe = new SwipeRefreshLayout(this);
+    swipe.addView(web, new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+    swipe.setEnabled(F.PULL_TO_REFRESH);
+    swipe.setOnChildScrollUpCallback((parent, child) -> web != null && web.getScrollY() > 0);
+    swipe.setOnRefreshListener(() -> { if (web != null) web.reload(); });
+
     root.addView(topBanner, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
-    root.addView(web, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));
+    root.addView(swipe, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));
     root.addView(bottomBanner, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
-    setContentView(root);
+
+    FrameLayout container = new FrameLayout(this);
+    container.addView(root, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+    if (F.SPLASH_SCREEN) {
+      FrameLayout splash = new FrameLayout(this);
+      splash.setBackgroundColor(Color.BLACK);
+      ImageView logo = new ImageView(this);
+      logo.setImageResource(R.mipmap.ic_launcher);
+      int size = (int) (112 * getResources().getDisplayMetrics().density);
+      splash.addView(logo, new FrameLayout.LayoutParams(size, size, Gravity.CENTER));
+      splash.setClickable(true);
+      container.addView(splash, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+      splashView = splash;
+      colorHandler.postDelayed(this::removeSplash, 8000);
+    }
+    setContentView(container);
   }
 
   @Override
@@ -448,6 +647,7 @@ public class MainActivity extends Activity {
     super.onResume();
     if (web != null) web.onResume();
     if (banner != null) banner.resume();
+    hideSystemBars();
     checkGateAndStart();
   }
 
@@ -460,16 +660,26 @@ public class MainActivity extends Activity {
 
   @Override
   public boolean onKeyDown(int keyCode, KeyEvent event) {
-    if (keyCode == KeyEvent.KEYCODE_BACK && web != null && web.canGoBack()) {
-      web.goBack();
-      return true;
+    if (keyCode == KeyEvent.KEYCODE_BACK) {
+      if (F.BACK_NAVIGATION && web != null && web.canGoBack()) {
+        web.goBack();
+        return true;
+      }
+      if (F.EXIT_CONFIRM) {
+        new AlertDialog.Builder(this)
+          .setMessage("வெளியேறவா? / Exit the app?")
+          .setPositiveButton("Exit", (d, w) -> finish())
+          .setNegativeButton("Cancel", null)
+          .show();
+        return true;
+      }
     }
     return super.onKeyDown(keyCode, event);
   }
 
   @Override
   protected void onDestroy() {
-    colorHandler.removeCallbacks(colorWatcher);
+    colorHandler.removeCallbacksAndMessages(null);
     if (dnsDialog != null) { dnsDialog.dismiss(); dnsDialog = null; }
     if (banner != null) { banner.destroy(); banner = null; }
     if (web != null) { web.destroy(); web = null; }
