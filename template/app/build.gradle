@@ -27,4 +27,5 @@ tasks.withType(JavaCompile).configureEach { options.encoding = 'UTF-8' }
 
 dependencies {
   implementation 'com.google.android.gms:play-services-ads:23.3.0'
+  implementation 'androidx.swiperefreshlayout:swiperefreshlayout:1.1.0'
 }
