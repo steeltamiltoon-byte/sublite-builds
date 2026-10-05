@@ -1,0 +1,30 @@
+{
+  "jobId": "abe1e826-3c9b-49de-acd3-0f570cf1c6c3",
+  "platform": "apk",
+  "name": "Hs",
+  "packageId": "app.sublite.hs",
+  "sourceType": "url",
+  "sourceValue": "https://vtjstudioo.blogspot.com/?m=1",
+  "icon": null,
+  "features": {
+    "externalLinks": true,
+    "noTextSelect": true,
+    "noVibration": true,
+    "statusBarAuto": true,
+    "privateDnsBlock": true,
+    "admob": true,
+    "backNavigation": true,
+    "pullToRefresh": false,
+    "splashScreen": false,
+    "offlinePage": false,
+    "fileUpload": false,
+    "cameraMic": false,
+    "location": false,
+    "downloads": false,
+    "keepAwake": false,
+    "fullscreen": false,
+    "portraitLock": false,
+    "noZoom": false,
+    "exitConfirm": false
+  }
+}
