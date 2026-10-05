@@ -5,8 +5,47 @@ on:
       job_id:
         description: Sublite job id
         required: true
+      platform:
+        description: apk, aab or exe
+        required: false
+        default: apk
 jobs:
+  windows:
+    if: ${{ inputs.platform == 'exe' }}
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    env:
+      JOB_ID: ${{ inputs.job_id }}
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install image tools
+        run: python -m pip install --quiet pillow
+      - name: Prepare desktop project
+        run: python scripts/prepare_desktop.py "$JOB_ID"
+      - name: Compile exe
+        run: |
+          set -o pipefail
+          cd desktop-work
+          npm install --no-audit --no-fund 2>&1 | tee ../build.log
+          npx electron-builder --win portable --x64 --publish never 2>&1 | tee -a ../build.log
+      - name: Publish artifact
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/release_desktop.sh "$JOB_ID"
   build:
+    if: ${{ inputs.platform != 'exe' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
