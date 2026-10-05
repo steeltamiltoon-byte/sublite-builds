@@ -123,4 +123,39 @@ if not made:
     for path, px in targets():
         open(path, "wb").write(solid_png(px))
 
+# feature switches -> F.java + manifest permissions
+DEFAULTS = {
+    "externalLinks": True, "noTextSelect": True, "noVibration": True, "statusBarAuto": True,
+    "privateDnsBlock": True, "admob": True, "backNavigation": True, "pullToRefresh": False,
+    "splashScreen": False, "offlinePage": False, "fileUpload": False, "cameraMic": False,
+    "location": False, "downloads": False, "keepAwake": False, "fullscreen": False,
+    "portraitLock": False, "noZoom": False, "exitConfirm": False,
+}
+feats = dict(DEFAULTS)
+for k, v in (job.get("features") or {}).items():
+    if k in feats and isinstance(v, bool):
+        feats[k] = v
+
+def const(key):
+    return re.sub(r"([A-Z])", r"_\1", key).upper()
+
+lines = ["package app.sublite.wrapper;", "", "final class F {"]
+for k, v in feats.items():
+    lines.append("  static final boolean %s = %s;" % (const(k), "true" if v else "false"))
+lines.append("}")
+open(os.path.join(main, "java", "app", "sublite", "wrapper", "F.java"), "w").write("\n".join(lines) + "\n")
+
+perms = []
+if feats["cameraMic"]:
+    perms += ["android.permission.CAMERA", "android.permission.RECORD_AUDIO", "android.permission.MODIFY_AUDIO_SETTINGS"]
+if feats["location"]:
+    perms += ["android.permission.ACCESS_FINE_LOCATION", "android.permission.ACCESS_COARSE_LOCATION"]
+perm_xml = "".join('<uses-permission android:name="%s" />\n  ' % p for p in perms)
+if feats["downloads"]:
+    perm_xml += '<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />\n  '
+manifest_path = os.path.join(main, "AndroidManifest.xml")
+mf = open(manifest_path).read().replace("<!--SUBLITE_PERMS-->", perm_xml)
+open(manifest_path, "w").write(mf)
+print("features:", feats)
+
 print("prepared", name, package_id, start_url)
