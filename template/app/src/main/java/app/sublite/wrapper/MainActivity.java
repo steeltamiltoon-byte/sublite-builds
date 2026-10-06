@@ -1,9 +1,15 @@
 package app.sublite.wrapper;
 
+import android.animation.AnimatorSet;
+import android.animation.ObjectAnimator;
+import android.animation.ValueAnimator;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Intent;
 import android.graphics.Color;
+import android.graphics.Typeface;
+import android.graphics.drawable.ColorDrawable;
+import android.graphics.drawable.GradientDrawable;
 import android.net.ConnectivityManager;
 import android.net.LinkProperties;
 import android.net.Network;
@@ -25,6 +31,7 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
+import android.widget.TextView;
 import android.Manifest;
 import android.app.DownloadManager;
 import android.content.pm.ActivityInfo;
@@ -173,14 +180,109 @@ public class MainActivity extends Activity {
 
   private void showDnsBlock() {
     if (dnsDialog != null && dnsDialog.isShowing()) return;
-    dnsDialog = new AlertDialog.Builder(this)
-      .setTitle("Private DNS")
-      .setMessage("இந்த ஆப்பைப் பயன்படுத்த Private DNS-ஐ OFF செய்யவும்.\n\nPlease turn OFF Private DNS to use this app.")
-      .setCancelable(false)
-      .setPositiveButton("Settings", (d, w) -> openDnsSettings())
-      .setNegativeButton("Exit", (d, w) -> finish())
-      .create();
+    float d = getResources().getDisplayMetrics().density;
+
+    LinearLayout card = new LinearLayout(this);
+    card.setOrientation(LinearLayout.VERTICAL);
+    card.setGravity(Gravity.CENTER_HORIZONTAL);
+    GradientDrawable cardBg = new GradientDrawable();
+    cardBg.setColor(0xFFFFFFFF);
+    cardBg.setCornerRadius(28 * d);
+    card.setBackground(cardBg);
+    int pad = (int) (22 * d);
+    card.setPadding(pad, pad + (int) (10 * d), pad, pad);
+
+    final TextView icon = new TextView(this);
+    icon.setText("🛡️");
+    icon.setTextSize(50);
+    icon.setGravity(Gravity.CENTER);
+    card.addView(icon, new LinearLayout.LayoutParams(
+      ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+    TextView title = new TextView(this);
+    title.setText("Private DNS");
+    title.setTextColor(0xFF1565C0);
+    title.setTextSize(22);
+    title.setTypeface(Typeface.DEFAULT_BOLD);
+    title.setGravity(Gravity.CENTER);
+    LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(
+      ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+    titleLp.topMargin = (int) (10 * d);
+    card.addView(title, titleLp);
+
+    TextView msg = new TextView(this);
+    msg.setText("இந்த ஆப்பைப் பயன்படுத்த Private DNS-ஐ OFF செய்யவும்.\n\nPlease turn OFF Private DNS to use this app.");
+    msg.setTextColor(0xFF37474F);
+    msg.setTextSize(15);
+    msg.setLineSpacing(3 * d, 1f);
+    msg.setGravity(Gravity.CENTER);
+    LinearLayout.LayoutParams msgLp = new LinearLayout.LayoutParams(
+      ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+    msgLp.topMargin = (int) (12 * d);
+    card.addView(msg, msgLp);
+
+    LinearLayout row = new LinearLayout(this);
+    row.setOrientation(LinearLayout.HORIZONTAL);
+    row.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
+    LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(
+      ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+    rowLp.topMargin = (int) (18 * d);
+    card.addView(row, rowLp);
+
+    TextView exitBtn = new TextView(this);
+    exitBtn.setText("EXIT");
+    exitBtn.setAllCaps(true);
+    exitBtn.setTextColor(0xFF1565C0);
+    exitBtn.setTypeface(Typeface.DEFAULT_BOLD);
+    exitBtn.setTextSize(14);
+    exitBtn.setPadding((int) (18 * d), (int) (10 * d), (int) (18 * d), (int) (10 * d));
+    exitBtn.setOnClickListener(v -> {
+      if (dnsDialog != null) dnsDialog.dismiss();
+      finish();
+    });
+    row.addView(exitBtn);
+
+    TextView settingsBtn = new TextView(this);
+    settingsBtn.setText("SETTINGS");
+    settingsBtn.setAllCaps(true);
+    settingsBtn.setTextColor(0xFF1E88E5);
+    settingsBtn.setTypeface(Typeface.DEFAULT_BOLD);
+    settingsBtn.setTextSize(14);
+    settingsBtn.setPadding((int) (18 * d), (int) (10 * d), (int) (4 * d), (int) (10 * d));
+    settingsBtn.setOnClickListener(v -> openDnsSettings());
+    row.addView(settingsBtn);
+
+    dnsDialog = new AlertDialog.Builder(this).create();
+    dnsDialog.setView(card);
+    dnsDialog.setCancelable(false);
     dnsDialog.show();
+    Window dw = dnsDialog.getWindow();
+    if (dw != null) {
+      dw.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+      WindowManager.LayoutParams lp = dw.getAttributes();
+      DisplayMetrics dm = getResources().getDisplayMetrics();
+      lp.width = dm.widthPixels - (int) (26 * d);
+      lp.dimAmount = 0.55f;
+      dw.setAttributes(lp);
+    }
+
+    ObjectAnimator hop = ObjectAnimator.ofFloat(icon, View.TRANSLATION_Y, 0f, -14f * d);
+    hop.setDuration(420);
+    hop.setRepeatCount(ValueAnimator.INFINITE);
+    hop.setRepeatMode(ValueAnimator.REVERSE);
+    ObjectAnimator popX = ObjectAnimator.ofFloat(icon, View.SCALE_X, 1f, 1.15f);
+    popX.setDuration(420);
+    popX.setRepeatCount(ValueAnimator.INFINITE);
+    popX.setRepeatMode(ValueAnimator.REVERSE);
+    ObjectAnimator popY = ObjectAnimator.ofFloat(icon, View.SCALE_Y, 1f, 1.15f);
+    popY.setDuration(420);
+    popY.setRepeatCount(ValueAnimator.INFINITE);
+    popY.setRepeatMode(ValueAnimator.REVERSE);
+    final AnimatorSet cute = new AnimatorSet();
+    cute.playTogether(hop, popX, popY);
+    cute.start();
+    dnsDialog.setOnDismissListener(dlg -> cute.cancel());
+
     if (!dnsSettingsOpened) {
       dnsSettingsOpened = true;
       openDnsSettings();
