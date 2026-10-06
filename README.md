@@ -1,3 +1,3 @@
 # sublite-builds
 
-Android build machine for Sublite Studio. Template version 10.
+Android build machine for Sublite Studio. Template version 11.
