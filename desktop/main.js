@@ -29,8 +29,8 @@ const NO_SELECT_CSS = "*{-webkit-user-select:none!important;user-select:none!imp
 function offlineHtml(url) {
   const safe = String(url).replace(/'/g, "%27").replace(/</g, "%3C");
   return "<!doctype html><meta charset=utf-8><body style=\"margin:0;background:#0d0f0d;color:#e8f5e0;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;text-align:center\">" +
-    "<div><div style=font-size:56px>&#128246;</div><h2>Internet இல்லை</h2><p style=opacity:.7>No internet connection</p>" +
-    "<button onclick=\"location.href='" + safe + "'\" style=\"padding:12px 28px;border:0;border-radius:10px;background:#9be15d;font-weight:bold;font-size:16px\">மீண்டும் முயற்சி / Retry</button></div>";
+    "<div><div style=font-size:56px>&#128246;</div><h2>You're offline</h2><p style=opacity:.7>No internet connection</p>" +
+    "<button onclick=\"location.href='" + safe + "'\" style=\"padding:12px 28px;border:0;border-radius:10px;background:#9be15d;font-weight:bold;font-size:16px\">Retry</button></div>";
 }
 
 let win = null;
@@ -90,7 +90,7 @@ function createWindow() {
   });
   win.on("close", (e) => {
     if (!F.exitConfirm || allowClose) return;
-    const choice = dialog.showMessageBoxSync(win, { type: "question", buttons: ["Exit", "Cancel"], defaultId: 1, message: "வெளியேறவா? / Exit the app?" });
+    const choice = dialog.showMessageBoxSync(win, { type: "question", buttons: ["Exit", "Cancel"], defaultId: 1, message: "Exit the app?" });
     if (choice === 0) allowClose = true; else e.preventDefault();
   });
   setTimeout(() => { if (splash) { splash.destroy(); splash = null; win.show(); } }, 8000);
