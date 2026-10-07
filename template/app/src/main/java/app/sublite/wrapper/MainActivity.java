@@ -13,6 +13,7 @@ import android.graphics.drawable.GradientDrawable;
 import android.net.ConnectivityManager;
 import android.net.LinkProperties;
 import android.net.Network;
+import android.net.NetworkCapabilities;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -21,6 +22,7 @@ import android.os.Message;
 import android.provider.Settings;
 import android.util.DisplayMetrics;
 import android.view.KeyEvent;
+import android.view.Display;
 import android.view.View;
 import android.view.Window;
 import android.webkit.JavascriptInterface;
@@ -70,6 +72,14 @@ public class MainActivity extends Activity {
   private boolean started = false;
   private boolean dnsSettingsOpened = false;
   private AlertDialog dnsDialog;
+  private AlertDialog internetDialog;
+  private boolean internetSettingsOpened = false;
+  private String disconnectedUrl;
+  private boolean resumed = false;
+  private ConnectivityManager networkManager;
+  private ConnectivityManager.NetworkCallback networkCallback;
+  private boolean colorReadPending = false;
+  private int lastBarColor = Color.TRANSPARENT;
 
   private FrameLayout topBanner;
   private FrameLayout bottomBanner;
@@ -91,8 +101,9 @@ public class MainActivity extends Activity {
   private final Runnable colorWatcher = new Runnable() {
     @Override
     public void run() {
+      if (!resumed || !F.STATUS_BAR_AUTO) return;
       if (web != null) updateStatusBarFromPage(web);
-      colorHandler.postDelayed(this, 500);
+      colorHandler.postDelayed(this, 250);
     }
   };
 
@@ -132,12 +143,20 @@ public class MainActivity extends Activity {
 
   // ---------- status bar ----------
   private void updateStatusBarFromPage(WebView view) {
+    if (!resumed || colorReadPending) return;
+    colorReadPending = true;
     view.evaluateJavascript(
-      "(function(){var m=document.querySelector('meta[name=theme-color]');var c=m&&m.content;" +
-      "if(!c){c=getComputedStyle(document.body).backgroundColor;if(!c||c==='rgba(0, 0, 0, 0)'){c=getComputedStyle(document.documentElement).backgroundColor;}}" +
-      "var x=document.createElement('canvas').getContext('2d');if(!x||!c)return '';x.fillStyle=c;return x.fillStyle;})()",
+      "(function(){try{var x=document.createElement('canvas').getContext('2d');if(!x)return '';" +
+      "var colors=[],e=document.elementFromPoint(Math.floor(innerWidth/2),1);" +
+      "while(e){var c=getComputedStyle(e).backgroundColor;if(c)colors.unshift(c);e=e.parentElement;}" +
+      "x.clearRect(0,0,1,1);colors.forEach(function(c){x.fillStyle=c;x.fillRect(0,0,1,1);});" +
+      "var p=x.getImageData(0,0,1,1).data;if(p[3]===0){var m=document.querySelector('meta[name=theme-color]');" +
+      "var c=m&&m.content||getComputedStyle(document.body||document.documentElement).backgroundColor;" +
+      "x.fillStyle=c||'#000000';x.fillRect(0,0,1,1);p=x.getImageData(0,0,1,1).data;}" +
+      "return '#'+[p[0],p[1],p[2]].map(function(v){return ('0'+v.toString(16)).slice(-2);}).join('');}catch(e){return '';}})()",
       value -> {
-        if (value == null) return;
+        colorReadPending = false;
+        if (!resumed || value == null) return;
         String c = value.trim();
         if (c.length() >= 2 && c.charAt(0) == '"' && c.charAt(c.length() - 1) == '"') {
           c = c.substring(1, c.length() - 1);
@@ -145,11 +164,149 @@ public class MainActivity extends Activity {
         if (c.isEmpty() || "null".equals(c)) return;
         try {
           int color = Color.parseColor(c);
+          if (color == lastBarColor) return;
+          lastBarColor = color;
           getWindow().setStatusBarColor(color);
           getWindow().setNavigationBarColor(color);
+          View decor = getWindow().getDecorView();
+          int flags = decor.getSystemUiVisibility();
+          boolean light = (0.2126 * Color.red(color) + 0.7152 * Color.green(color) + 0.0722 * Color.blue(color)) > 160;
+          flags = light ? flags | View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR : flags & ~View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
+          if (Build.VERSION.SDK_INT >= 26) {
+            flags = light ? flags | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR : flags & ~View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
+          }
+          decor.setSystemUiVisibility(flags);
         } catch (Exception ignored) { }
       }
     );
+  }
+
+  // ---------- display refresh preference (system and device retain control) ----------
+  private void requestSmoothDisplay() {
+    try {
+      Display display = getWindowManager().getDefaultDisplay();
+      Display.Mode current = display.getMode();
+      Display.Mode best = null;
+      for (Display.Mode mode : display.getSupportedModes()) {
+        if (mode.getPhysicalWidth() != current.getPhysicalWidth() || mode.getPhysicalHeight() != current.getPhysicalHeight()) continue;
+        if (mode.getRefreshRate() > 120.5f) continue;
+        if (best == null || mode.getRefreshRate() > best.getRefreshRate()) best = mode;
+      }
+      if (best == null) return;
+      WindowManager.LayoutParams lp = getWindow().getAttributes();
+      lp.preferredDisplayModeId = best.getModeId();
+      lp.preferredRefreshRate = Math.min(120f, best.getRefreshRate());
+      getWindow().setAttributes(lp);
+    } catch (Exception ignored) { }
+  }
+
+  // ---------- internet connection ----------
+  private boolean hasInternetConnection() {
+    try {
+      ConnectivityManager cm = (ConnectivityManager) getSystemService(CONNECTIVITY_SERVICE);
+      if (cm == null) return true;
+      Network network = cm.getActiveNetwork();
+      NetworkCapabilities caps = network == null ? null : cm.getNetworkCapabilities(network);
+      return caps != null && caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET);
+    } catch (Exception ignored) { return true; }
+  }
+
+  private void openInternetSettings() {
+    String[] actions = Build.VERSION.SDK_INT >= 29
+      ? new String[] { Settings.Panel.ACTION_INTERNET_CONNECTIVITY, Settings.ACTION_WIRELESS_SETTINGS, Settings.ACTION_WIFI_SETTINGS, Settings.ACTION_SETTINGS }
+      : new String[] { Settings.ACTION_WIRELESS_SETTINGS, Settings.ACTION_WIFI_SETTINGS, Settings.ACTION_SETTINGS };
+    for (String action : actions) {
+      try { startActivity(new Intent(action)); return; } catch (Exception ignored) { }
+    }
+  }
+
+  private void showInternetDialog() {
+    if (!resumed || isFinishing() || (internetDialog != null && internetDialog.isShowing())) return;
+    float d = getResources().getDisplayMetrics().density;
+    LinearLayout card = new LinearLayout(this);
+    card.setOrientation(LinearLayout.VERTICAL);
+    card.setGravity(Gravity.CENTER_HORIZONTAL);
+    int pad = (int) (22 * d);
+    card.setPadding(pad, pad, pad, pad);
+    GradientDrawable bg = new GradientDrawable();
+    bg.setColor(0xFFFFFFFF);
+    bg.setCornerRadius(28 * d);
+    card.setBackground(bg);
+    TextView title = new TextView(this);
+    title.setText("📶  No internet connection");
+    title.setTextSize(20);
+    title.setTextColor(0xFF1565C0);
+    title.setTypeface(Typeface.DEFAULT_BOLD);
+    title.setGravity(Gravity.CENTER);
+    card.addView(title);
+    TextView message = new TextView(this);
+    message.setText("Turn on Wi-Fi or mobile data to reconnect.");
+    message.setTextSize(15);
+    message.setTextColor(0xFF37474F);
+    message.setGravity(Gravity.CENTER);
+    message.setPadding(0, (int) (16 * d), 0, (int) (16 * d));
+    card.addView(message);
+    LinearLayout row = new LinearLayout(this);
+    row.setGravity(Gravity.END);
+    String[] labels = { "RETRY", "SETTINGS" };
+    for (String label : labels) {
+      TextView button = new TextView(this);
+      button.setText(label);
+      button.setTextSize(14);
+      button.setTypeface(Typeface.DEFAULT_BOLD);
+      button.setTextColor(0xFF1565C0);
+      button.setGravity(Gravity.CENTER);
+      button.setMinHeight((int) (48 * d));
+      button.setPadding((int) (12 * d), 0, (int) (12 * d), 0);
+      button.setOnClickListener(v -> {
+        if ("SETTINGS".equals(label)) openInternetSettings();
+        else if (hasInternetConnection()) checkGateAndStart();
+        else message.setText("Still offline. Turn on Wi-Fi or mobile data in Settings.");
+      });
+      row.addView(button);
+    }
+    card.addView(row);
+    internetDialog = new AlertDialog.Builder(this).create();
+    internetDialog.setView(card);
+    internetDialog.setCancelable(false);
+    internetDialog.show();
+    Window window = internetDialog.getWindow();
+    if (window != null) {
+      window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+      window.setLayout(getResources().getDisplayMetrics().widthPixels - (int) (26 * d), ViewGroup.LayoutParams.WRAP_CONTENT);
+    }
+    if (!internetSettingsOpened) {
+      internetSettingsOpened = true;
+      colorHandler.postDelayed(() -> {
+        if (resumed && !hasInternetConnection() && internetDialog != null && internetDialog.isShowing()) openInternetSettings();
+      }, 900);
+    }
+  }
+
+  private void watchNetwork() {
+    if (networkCallback != null) return;
+    networkManager = (ConnectivityManager) getSystemService(CONNECTIVITY_SERVICE);
+    if (networkManager == null) return;
+    networkCallback = new ConnectivityManager.NetworkCallback() {
+      private void changed() {
+        colorHandler.postDelayed(() -> { if (resumed) checkGateAndStart(); }, 700);
+      }
+      @Override public void onAvailable(Network network) { changed(); }
+      @Override public void onLost(Network network) { changed(); }
+      @Override public void onCapabilitiesChanged(Network network, NetworkCapabilities caps) { changed(); }
+    };
+    try {
+      if (Build.VERSION.SDK_INT >= 24) networkManager.registerDefaultNetworkCallback(networkCallback);
+      else networkManager.registerNetworkCallback(new android.net.NetworkRequest.Builder()
+        .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET).build(), networkCallback);
+    } catch (Exception ignored) { networkCallback = null; }
+  }
+
+  private void stopWatchingNetwork() {
+    if (networkManager != null && networkCallback != null) {
+      try { networkManager.unregisterNetworkCallback(networkCallback); } catch (Exception ignored) { }
+    }
+    networkCallback = null;
   }
 
   // ---------- Private DNS gate ----------
@@ -295,9 +452,19 @@ public class MainActivity extends Activity {
       return;
     }
     if (dnsDialog != null) { dnsDialog.dismiss(); dnsDialog = null; }
+    if (!hasInternetConnection()) {
+      showInternetDialog();
+      return;
+    }
+    internetSettingsOpened = false;
+    if (internetDialog != null) { internetDialog.dismiss(); internetDialog = null; }
     if (!started && web != null) {
       started = true;
       web.loadUrl(startUrl);
+    } else if (disconnectedUrl != null && web != null) {
+      String retryUrl = disconnectedUrl;
+      disconnectedUrl = null;
+      web.loadUrl(retryUrl);
     }
   }
 
@@ -680,6 +847,11 @@ public class MainActivity extends Activity {
       @Override
       public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
         super.onReceivedError(view, request, error);
+        if (request.isForMainFrame() && !hasInternetConnection()) {
+          disconnectedUrl = request.getUrl().toString();
+          showInternetDialog();
+          return;
+        }
         if (F.OFFLINE_PAGE && request.isForMainFrame()) showOfflinePage(view, request.getUrl().toString());
       }
 
@@ -710,7 +882,7 @@ public class MainActivity extends Activity {
         }
         js.append("})()");
         view.evaluateJavascript(js.toString(), null);
-        if (F.STATUS_BAR_AUTO) {
+        if (F.STATUS_BAR_AUTO && resumed) {
           colorHandler.removeCallbacks(colorWatcher);
           colorHandler.post(colorWatcher);
         }
@@ -747,14 +919,24 @@ public class MainActivity extends Activity {
   @Override
   protected void onResume() {
     super.onResume();
+    resumed = true;
     if (web != null) web.onResume();
     if (banner != null) banner.resume();
     hideSystemBars();
+    requestSmoothDisplay();
+    watchNetwork();
     checkGateAndStart();
+    if (F.STATUS_BAR_AUTO) {
+      colorHandler.removeCallbacks(colorWatcher);
+      colorHandler.post(colorWatcher);
+    }
   }
 
   @Override
   protected void onPause() {
+    resumed = false;
+    colorHandler.removeCallbacks(colorWatcher);
+    stopWatchingNetwork();
     if (banner != null) banner.pause();
     if (web != null) web.onPause();
     super.onPause();
@@ -781,7 +963,10 @@ public class MainActivity extends Activity {
 
   @Override
   protected void onDestroy() {
+    resumed = false;
+    stopWatchingNetwork();
     colorHandler.removeCallbacksAndMessages(null);
+    if (internetDialog != null) { internetDialog.dismiss(); internetDialog = null; }
     if (dnsDialog != null) { dnsDialog.dismiss(); dnsDialog = null; }
     if (banner != null) { banner.destroy(); banner = null; }
     if (web != null) { web.destroy(); web = null; }
