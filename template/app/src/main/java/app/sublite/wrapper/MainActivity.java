@@ -211,7 +211,7 @@ public class MainActivity extends Activity {
     card.addView(title, titleLp);
 
     TextView msg = new TextView(this);
-    msg.setText("இந்த ஆப்பைப் பயன்படுத்த Private DNS-ஐ OFF செய்யவும்.\n\nPlease turn OFF Private DNS to use this app.");
+    msg.setText("Please turn OFF Private DNS to use this app.");
     msg.setTextColor(0xFF37474F);
     msg.setTextSize(15);
     msg.setLineSpacing(3 * d, 1f);
@@ -503,8 +503,8 @@ public class MainActivity extends Activity {
     String html = "<!doctype html><html><head><meta name='viewport' content='width=device-width,initial-scale=1'>"
       + "<meta name='theme-color' content='#0d0f0d'></head>"
       + "<body style='margin:0;background:#0d0f0d;color:#e8f5e0;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;text-align:center'>"
-      + "<div><div style='font-size:56px'>&#128246;</div><h2>Internet இல்லை</h2><p style='opacity:.7'>No internet connection</p>"
-      + "<button onclick=\"location.href='" + safe + "'\" style='margin-top:16px;padding:12px 28px;border:0;border-radius:10px;background:#9be15d;color:#0d0f0d;font-weight:bold;font-size:16px'>மீண்டும் முயற்சி / Retry</button></div></body></html>";
+      + "<div><div style='font-size:56px'>&#128246;</div><h2>You're offline</h2><p style='opacity:.7'>No internet connection</p>"
+      + "<button onclick=\"location.href='" + safe + "'\" style='margin-top:16px;padding:12px 28px;border:0;border-radius:10px;background:#9be15d;color:#0d0f0d;font-weight:bold;font-size:16px'>Retry</button></div></body></html>";
     view.loadDataWithBaseURL(null, html, "text/html", "utf-8", failingUrl);
   }
 
@@ -769,7 +769,7 @@ public class MainActivity extends Activity {
       }
       if (F.EXIT_CONFIRM) {
         new AlertDialog.Builder(this)
-          .setMessage("வெளியேறவா? / Exit the app?")
+          .setMessage("Exit the app?")
           .setPositiveButton("Exit", (d, w) -> finish())
           .setNegativeButton("Cancel", null)
           .show();
