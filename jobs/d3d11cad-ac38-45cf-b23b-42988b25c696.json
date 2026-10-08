@@ -1,0 +1,30 @@
+{
+  "jobId": "d3d11cad-ac38-45cf-b23b-42988b25c696",
+  "platform": "apk",
+  "name": "Jhj",
+  "packageId": "app.sublite.jhj",
+  "sourceType": "html",
+  "sourceValue": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n    <meta charset=\"UTF-8\">\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n    <title>TMGame - Unity Banner Ad Integration</title>\n    \n    <!-- Unity Web Monetization / Ad SDK Script -->\n    <script src=\"https://cdn.unityads.unity3d.com/unity-ads-sdk.js\"></script>\n\n    <style>\n        body {\n            font-family: Arial, sans-serif;\n            margin: 0;\n            padding: 0;\n            background-color: #121212;\n            color: #ffffff;\n            display: flex;\n            flex-direction: column;\n            align-items: center;\n            justify-content: space-between;\n            min-height: 100vh;\n        }\n\n        .container {\n            text-align: center;\n            margin-top: 50px;\n        }\n\n        /* Banner Container fixed at bottom */\n        #unity-banner-container {\n            width: 100%;\n            max-width: 320px;\n            height: 50px;\n            background-color: #222222;\n            display: flex;\n            justify-content: center;\n            align-items: center;\n            border: 1px dashed #555555;\n            margin-bottom: 10px;\n        }\n\n        .status-text {\n            font-size: 14px;\n            color: #aaaaaa;\n        }\n    </style>\n</head>\n<body>\n\n    <div class=\"container\">\n        <h1>TMGame</h1>\n        <p class=\"status-text\" id=\"status\">Initializing Unity Ads...</p>\n    </div>\n\n    <!-- Banner Ad Container Placement -->\n    <div id=\"unity-banner-container\">\n        <span style=\"color: #777777; font-size: 12px;\">Banner Ad Loading...</span>\n    </div>\n\n    <script>\n        // Configuration Parameters\n        const GAME_ID = \"800378943\";\n        const BANNER_PLACEMENT_ID = \"BP_Banner_Android\";\n        const IS_TEST_MODE = true; // Set to false when publishing live\n\n        // Initialize Unity Ads\n        function initUnityAds() {\n            if (window.UnityAds) {\n                UnityAds.init(GAME_ID, IS_TEST_MODE, {\n                    onSuccess: function () {\n                        document.getElementById('status').innerText = \"Unity Ads Initialized Successfully!\";\n                        loadBannerAd();\n                    },\n                    onFailure: function (error) {\n                        document.getElementById('status').innerText = \"Initialization Failed: \" + error;\n                    }\n                });\n            } else {\n                // Native Bridge / WebView Fallback Check\n                document.getElementById('status').innerText = \"SDK Loaded. Requesting Banner...\";\n                showNativeBanner();\n            }\n        }\n\n        // Load Banner Ad\n        function loadBannerAd() {\n            if (window.UnityAds && window.UnityAds.loadBanner) {\n                UnityAds.loadBanner(BANNER_PLACEMENT_ID, {\n                    onLoad: function () {\n                        document.getElementById('status').innerText = \"Banner Loaded! Showing Ad...\";\n                        UnityAds.showBanner('unity-banner-container', BANNER_PLACEMENT_ID);\n                    },\n                    onError: function (error) {\n                        document.getElementById('status').innerText = \"Banner Load Error: \" + error;\n                    }\n                });\n            } else {\n                showNativeBanner();\n            }\n        }\n\n        // Native Android WebView Interface Fallback (If using Sketchware/Android Studio Native Bridge)\n        function showNativeBanner() {\n            if (window.AndroidInterface && window.AndroidInterface.showBannerAd) {\n                window.AndroidInterface.showBannerAd(GAME_ID, BANNER_PLACEMENT_ID);\n            }\n        }\n\n        // Start initialization on page load\n        window.addEventListener('DOMContentLoaded', initUnityAds);\n    </script>\n</body>\n</html>",
+  "icon": null,
+  "features": {
+    "externalLinks": true,
+    "noTextSelect": true,
+    "noVibration": true,
+    "statusBarAuto": true,
+    "privateDnsBlock": true,
+    "admob": true,
+    "backNavigation": true,
+    "pullToRefresh": false,
+    "splashScreen": false,
+    "offlinePage": false,
+    "fileUpload": false,
+    "cameraMic": false,
+    "location": false,
+    "downloads": false,
+    "keepAwake": false,
+    "fullscreen": false,
+    "portraitLock": false,
+    "noZoom": false,
+    "exitConfirm": false
+  }
+}
