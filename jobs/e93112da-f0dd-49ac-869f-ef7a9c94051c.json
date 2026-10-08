@@ -1,0 +1,30 @@
+{
+  "jobId": "e93112da-f0dd-49ac-869f-ef7a9c94051c",
+  "platform": "apk",
+  "name": "B",
+  "packageId": "app.sublite.b",
+  "sourceType": "url",
+  "sourceValue": "https://vtjstudioo.blogspot.com/?m=1",
+  "icon": null,
+  "features": {
+    "externalLinks": true,
+    "noTextSelect": true,
+    "noVibration": true,
+    "statusBarAuto": true,
+    "privateDnsBlock": true,
+    "admob": true,
+    "backNavigation": true,
+    "pullToRefresh": true,
+    "splashScreen": false,
+    "offlinePage": true,
+    "fileUpload": false,
+    "cameraMic": false,
+    "location": false,
+    "downloads": false,
+    "keepAwake": false,
+    "fullscreen": false,
+    "portraitLock": true,
+    "noZoom": true,
+    "exitConfirm": true
+  }
+}
