@@ -29,9 +29,34 @@ else:
         f.write(html)
     start_url = "file:///android_asset/www/index.html"
 
-# applicationId + start url
+# AdMob App ID: job field, else any ca-app-pub-...~... found in the HTML / page,
+# else Google's official test App ID (the SDK requires one in the manifest).
+TEST_APP_ID = "ca-app-pub-3940256099942544~3347511713"
+APP_ID_RE = re.compile(r"ca-app-pub-[0-9]+~[0-9]+")
+
+def find_app_id():
+    m = APP_ID_RE.search(job.get("admobAppId") or "")
+    if m:
+        return m.group(0)
+    text = ""
+    if job.get("sourceType") == "url":
+        try:
+            import urllib.request
+            req = urllib.request.Request(start_url, headers={"User-Agent": "Mozilla/5.0 (Linux; Android 13)"})
+            text = urllib.request.urlopen(req, timeout=20).read(2000000).decode("utf-8", "ignore")
+        except Exception as exc:
+            print("could not fetch page for admob id:", exc)
+    else:
+        text = job.get("sourceValue") or ""
+    m = APP_ID_RE.search(text)
+    return m.group(0) if m else TEST_APP_ID
+
+admob_app_id = find_app_id()
+print("admob app id:", admob_app_id)
+
+# applicationId + start url + admob app id
 gradle_path = os.path.join("work", "app", "build.gradle")
-gradle = open(gradle_path).read().replace("__PACKAGE_ID__", package_id)
+gradle = open(gradle_path).read().replace("__PACKAGE_ID__", package_id).replace("__ADMOB_APP_ID__", admob_app_id)
 open(gradle_path, "w").write(gradle)
 
 activity = os.path.join(main, "java", "app", "sublite", "wrapper", "MainActivity.java")
@@ -97,5 +122,40 @@ if not made:
 
     for path, px in targets():
         open(path, "wb").write(solid_png(px))
+
+# feature switches -> F.java + manifest permissions
+DEFAULTS = {
+    "externalLinks": True, "noTextSelect": True, "noVibration": True, "statusBarAuto": True,
+    "privateDnsBlock": True, "admob": True, "backNavigation": True, "pullToRefresh": False,
+    "splashScreen": False, "offlinePage": False, "fileUpload": False, "cameraMic": False,
+    "location": False, "downloads": False, "keepAwake": False, "fullscreen": False,
+    "portraitLock": False, "noZoom": False, "exitConfirm": False,
+}
+feats = dict(DEFAULTS)
+for k, v in (job.get("features") or {}).items():
+    if k in feats and isinstance(v, bool):
+        feats[k] = v
+
+def const(key):
+    return re.sub(r"([A-Z])", r"_\1", key).upper()
+
+lines = ["package app.sublite.wrapper;", "", "final class F {"]
+for k, v in feats.items():
+    lines.append("  static final boolean %s = %s;" % (const(k), "true" if v else "false"))
+lines.append("}")
+open(os.path.join(main, "java", "app", "sublite", "wrapper", "F.java"), "w").write("\n".join(lines) + "\n")
+
+perms = []
+if feats["cameraMic"]:
+    perms += ["android.permission.CAMERA", "android.permission.RECORD_AUDIO", "android.permission.MODIFY_AUDIO_SETTINGS"]
+if feats["location"]:
+    perms += ["android.permission.ACCESS_FINE_LOCATION", "android.permission.ACCESS_COARSE_LOCATION"]
+perm_xml = "".join('<uses-permission android:name="%s" />\n  ' % p for p in perms)
+if feats["downloads"]:
+    perm_xml += '<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />\n  '
+manifest_path = os.path.join(main, "AndroidManifest.xml")
+mf = open(manifest_path).read().replace("<!--SUBLITE_PERMS-->", perm_xml)
+open(manifest_path, "w").write(mf)
+print("features:", feats)
 
 print("prepared", name, package_id, start_url)
